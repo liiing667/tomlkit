@@ -40,6 +40,20 @@ TOML Items
    :members:
    :exclude-members: item, AbstractTable
 
+Trivia (format metadata)
+------------------------
+
+.. automodule:: tomlkit.trivia
+   :members:
+   :show-inheritance:
+
+Renderer
+--------
+
+.. automodule:: tomlkit.renderer
+   :members:
+   :show-inheritance:
+
 TOML Exceptions
 ---------------
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import abc
 import copy
-import dataclasses
 import inspect
 import re
 import string
@@ -32,6 +31,7 @@ from tomlkit._utils import CONTROL_CHARS
 from tomlkit._utils import escape_string
 from tomlkit.exceptions import ConvertError
 from tomlkit.exceptions import InvalidStringError
+from tomlkit.trivia import Trivia
 
 
 if TYPE_CHECKING:
@@ -312,25 +312,6 @@ class BoolType(Enum):
 
     def __len__(self) -> int:
         return len(self.value)
-
-
-@dataclasses.dataclass
-class Trivia:
-    """
-    Trivia information (aka metadata).
-    """
-
-    # Whitespace before a value.
-    indent: str = ""
-    # Whitespace after a value, but before a comment.
-    comment_ws: str = ""
-    # Comment, starting with # character, or empty string if no comment.
-    comment: str = ""
-    # Trailing newline.
-    trail: str = "\n"
-
-    def copy(self) -> Trivia:
-        return dataclasses.replace(self)
 
 
 class KeyType(Enum):
