@@ -1463,23 +1463,9 @@ class Array(Item, _CustomList):  # type: ignore[type-arg]
         return self
 
     def as_string(self) -> str:
-        if not self._multiline or not self._value:
-            return f"[{''.join(v.as_string() for v in self._iter_items())}]"
+        from tomlkit.render import render_array
 
-        s = "[\n"
-        s += "".join(
-            self.trivia.indent
-            + " " * 4
-            + v.value.as_string()
-            + ("," if not isinstance(v.value, Null) else "")
-            + (v.comment.as_string() if v.comment is not None else "")
-            + "\n"
-            for v in self._value
-            if v.value is not None
-        )
-        s += self.trivia.indent + "]"
-
-        return s
+        return render_array(self)
 
     def _reindex(self) -> None:
         self._index_map.clear()
@@ -2053,124 +2039,9 @@ class InlineTable(AbstractTable):
             raise ValueError("Inline tables cannot contain a table")
 
     def as_string(self) -> str:
-        buf = "{"
-        emitted_key = False
-        needs_separator = False
-        # Single pass over the body to precompute everything the render loop
-        # needs, instead of rescanning the tail on every separator comma (which
-        # was O(n^2) on large inline tables): whether any explicit-comma
-        # whitespace is present, the index of the last real key, and the index
-        # of the last Null (deleted) element.
-        has_explicit_commas = False
-        last_item_idx = None
-        last_null_idx = -1
-        for _i, (_k, _v) in enumerate(self._value.body):
-            if _k is not None:
-                last_item_idx = _i
-            elif isinstance(_v, Whitespace) and "," in _v.s:
-                has_explicit_commas = True
-            if isinstance(_v, Null):
-                last_null_idx = _i
-        pending_separator = False
-        # Buffer position right after the last rendered value, used to place a
-        # deferred separator comma after the value rather than after a trailing
-        # comment/whitespace.
-        last_value_end = len(buf)
-        for i, (k, v) in enumerate(self._value.body):
-            if k is None:
-                if isinstance(v, Whitespace) and "," in v.s:
-                    if not emitted_key:
-                        buf += v.as_string().replace(",", "", 1)
-                        continue
+        from tomlkit.render import render_inline_table
 
-                    # Equivalent to scanning body[i + 1 :] for a Null / a real
-                    # key, but O(1) using the indices precomputed above.
-                    has_following_null = last_null_idx > i
-                    has_following_key = last_item_idx is not None and last_item_idx > i
-                    if has_following_null and not has_following_key:
-                        buf += v.as_string().replace(",", "", 1)
-                        continue
-
-                    if pending_separator:
-                        # A previous key was removed, leaving this comma as a
-                        # duplicate of an already emitted separator. Drop it to
-                        # avoid producing an invalid ``, ,`` sequence.
-                        buf += v.as_string().replace(",", "", 1)
-                        continue
-
-                    pending_separator = True
-
-                if i == len(self._value.body) - 1:
-                    if self._new:
-                        buf = buf.rstrip(", ")
-                    elif not has_explicit_commas or "," in v.as_string():
-                        buf = buf.rstrip(",")
-
-                v_string = v.as_string()
-                buf += v_string
-                if "," in v_string:
-                    needs_separator = False
-
-                continue
-
-            if has_explicit_commas and needs_separator:
-                # Insert the deferred separator right after the previous value,
-                # not after any trailing comment/whitespace -- otherwise the
-                # comma is swallowed by a trailing comment (see #512).
-                buf = f"{buf[:last_value_end]},{buf[last_value_end:]}"
-                needs_separator = False
-
-            v_trivia_trail = v.trivia.trail.replace("\n", "")
-            if k.is_dotted() and isinstance(v, Table):
-                # A table materialized from a dotted key renders one
-                # `prefix.child = value` pair per child, so that keys added
-                # after parsing stay attached to the dotted prefix.
-                rendered = ", ".join(self._render_dotted(k, v))
-            else:
-                rendered = (
-                    f"{k.as_string() + ('.' if k.is_dotted() else '')}"
-                    f"{k.sep}"
-                    f"{v.as_string()}"
-                )
-            buf += f"{v.trivia.indent}{rendered}"
-            last_value_end = len(buf)
-            buf += f"{v.trivia.comment}{v_trivia_trail}"
-            emitted_key = True
-            pending_separator = False
-            if has_explicit_commas:
-                needs_separator = True
-
-            if (
-                not has_explicit_commas
-                and last_item_idx is not None
-                and i < last_item_idx
-            ):
-                buf += ","
-                if self._new:
-                    buf += " "
-
-        buf += "}"
-
-        return buf
-
-    def _render_dotted(self, key: Key, table: Table) -> list[str]:
-        """Render a table materialized from a dotted key as a list of
-        ``prefix.child = value`` strings, recursing into nested dotted
-        children."""
-        prefix = f"{key.as_string()}.{key.sep}"
-        parts = []
-        for k, v in table.value.body:
-            if k is None:
-                continue
-            if isinstance(v, Table):
-                parts.extend(f"{prefix}{sub}" for sub in self._render_dotted(k, v))
-            else:
-                trail = v.trivia.trail.replace("\n", "")
-                parts.append(
-                    f"{prefix}{v.trivia.indent}{k.as_string()}{k.sep}{v.as_string()}"
-                    f"{v.trivia.comment_ws}{v.trivia.comment}{trail}"
-                )
-        return parts
+        return render_inline_table(self)
 
     def __setitem__(self, key: Key | str, value: Any) -> None:
         if hasattr(value, "trivia") and value.trivia.comment:

@@ -11,7 +11,6 @@ from typing import Any
 if TYPE_CHECKING:
     from typing import Self
 
-from tomlkit._compat import decode
 from tomlkit._types import _CustomDict
 from tomlkit._utils import merge_dicts
 from tomlkit.exceptions import KeyAlreadyPresent
@@ -27,6 +26,7 @@ from tomlkit.items import Table
 from tomlkit.items import Trivia
 from tomlkit.items import Whitespace
 from tomlkit.items import item as _item
+from tomlkit.render import render_container as _render_container
 
 
 _NOT_SET = object()
@@ -631,180 +631,13 @@ class Container(_CustomDict):  # type: ignore[type-arg]
         return None
 
     def as_string(self) -> str:
-        """Render as TOML string."""
-        s = ""
-        for k, v in self._body:
-            if k is not None:
-                if isinstance(v, Table):
-                    if (
-                        s.strip(" ")
-                        and not s.strip(" ").endswith("\n")
-                        and "\n" not in v.trivia.indent
-                    ):
-                        s += "\n"
-                    s += self._render_table(k, v)
-                elif isinstance(v, AoT):
-                    if (
-                        s.strip(" ")
-                        and not s.strip(" ").endswith("\n")
-                        and "\n" not in v.trivia.indent
-                    ):
-                        s += "\n"
-                    s += self._render_aot(k, v)
-                else:
-                    s += self._render_simple_item(k, v)
-            else:
-                s += self._render_simple_item(k, v)
+        """Render as TOML string.
 
-        return s
-
-    def _render_table(self, key: Key, table: Table, prefix: str | None = None) -> str:
-        cur = ""
-
-        if table.display_name is not None:
-            _key = table.display_name
-        else:
-            _key = key.as_string()
-
-            if prefix is not None:
-                _key = prefix + "." + _key
-
-        if (
-            not table.is_super_table()
-            or (
-                any(
-                    not isinstance(v, (Table, AoT, Whitespace, Null))
-                    for _, v in table.value.body
-                )
-                and not key.is_dotted()
-            )
-            or (
-                any(
-                    k is not None and k.is_dotted()
-                    for k, v in table.value.body
-                    if isinstance(v, Table)
-                )
-                and not key.is_dotted()
-            )
-        ):
-            open_, close = "[", "]"
-            if table.is_aot_element():
-                open_, close = "[[", "]]"
-
-            newline_in_table_trivia = (
-                "\n" if "\n" not in table.trivia.trail and len(table.value) > 0 else ""
-            )
-            cur += (
-                f"{table.trivia.indent}"
-                f"{open_}"
-                f"{decode(_key)}"
-                f"{close}"
-                f"{table.trivia.comment_ws}"
-                f"{decode(table.trivia.comment)}"
-                f"{table.trivia.trail}"
-                f"{newline_in_table_trivia}"
-            )
-        elif table.trivia.indent == "\n":
-            cur += table.trivia.indent
-
-        for k, v in table.value.body:
-            if isinstance(v, Table):
-                if (
-                    cur.strip(" ")
-                    and not cur.strip(" ").endswith("\n")
-                    and "\n" not in v.trivia.indent
-                ):
-                    cur += "\n"
-                assert k is not None
-                if v.is_super_table():
-                    if k.is_dotted() and not key.is_dotted():
-                        # Dotted key inside table
-                        cur += self._render_table(k, v)
-                    else:
-                        cur += self._render_table(k, v, prefix=_key)
-                else:
-                    cur += self._render_table(k, v, prefix=_key)
-            elif isinstance(v, AoT):
-                if (
-                    cur.strip(" ")
-                    and not cur.strip(" ").endswith("\n")
-                    and "\n" not in v.trivia.indent
-                ):
-                    cur += "\n"
-                assert k is not None
-                cur += self._render_aot(k, v, prefix=_key)
-            else:
-                cur += self._render_simple_item(
-                    k, v, prefix=_key if key.is_dotted() else None
-                )
-
-        return cur
-
-    def _render_aot(self, key: Key, aot: AoT, prefix: str | None = None) -> str:
-        _key = key.as_string()
-        if prefix is not None:
-            _key = prefix + "." + _key
-
-        cur = ""
-        _key = decode(_key)
-        for table in aot.body:
-            cur += self._render_aot_table(table, prefix=_key)
-
-        return cur
-
-    def _render_aot_table(self, table: Table, prefix: str | None = None) -> str:
-        cur = ""
-        _key = prefix or ""
-        open_, close = "[[", "]]"
-
-        cur += (
-            f"{table.trivia.indent}"
-            f"{open_}"
-            f"{decode(_key)}"
-            f"{close}"
-            f"{table.trivia.comment_ws}"
-            f"{decode(table.trivia.comment)}"
-            f"{table.trivia.trail}"
-        )
-
-        for k, v in table.value.body:
-            if isinstance(v, Table):
-                assert k is not None
-                if v.is_super_table():
-                    if k.is_dotted():
-                        # Dotted key inside table
-                        cur += self._render_table(k, v)
-                    else:
-                        cur += self._render_table(k, v, prefix=_key)
-                else:
-                    cur += self._render_table(k, v, prefix=_key)
-            elif isinstance(v, AoT):
-                assert k is not None
-                cur += self._render_aot(k, v, prefix=_key)
-            else:
-                cur += self._render_simple_item(k, v)
-
-        return cur
-
-    def _render_simple_item(
-        self, key: Key | None, item: Item, prefix: str | None = None
-    ) -> str:
-        if key is None:
-            return item.as_string()
-
-        _key = key.as_string()
-        if prefix is not None:
-            _key = prefix + "." + _key
-
-        return (
-            f"{item.trivia.indent}"
-            f"{decode(_key)}"
-            f"{key.sep}"
-            f"{decode(item.as_string())}"
-            f"{item.trivia.comment_ws}"
-            f"{decode(item.trivia.comment)}"
-            f"{item.trivia.trail}"
-        )
+        The actual rendering lives in the rendering layer
+        (:class:`tomlkit.render.Renderer`); this is kept as the public
+        entry point so callers do not depend on the layer split.
+        """
+        return _render_container(self)
 
     def __len__(self) -> int:
         return dict.__len__(self)
